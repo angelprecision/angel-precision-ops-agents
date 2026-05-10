@@ -48,7 +48,7 @@ Trust, seriousness, founder credibility.
 - beta-build updates
 
 ### Posting rhythm
-- 1 post per day
+- 3 post per day
 - best window: morning or early afternoon
 
 ### Approval check
