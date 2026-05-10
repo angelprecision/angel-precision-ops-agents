@@ -48,3 +48,13 @@ If solo today, collapse roles like this:
 - You = Founder + Sales + final approvals
 - One builder = Automation Engineer
 - One helper/VA = Content Operator + Sales Coordinator
+## Operating Principle
+
+Automation assists operations.
+Humans retain approval authority over:
+- client onboarding
+- pricing
+- risk-sensitive communication
+- public claims
+- outbound publishing
+- escalation handling
