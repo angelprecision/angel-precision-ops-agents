@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS proof_vault (
   platform_use         text,
   file_url             text,
   related_trade_id     text,
-  related_client_id    uuid        REFERENCES clients(id) ON DELETE SET NULL,
+  related_client_id    uuid,
   sensitivity          text        DEFAULT 'internal'
                                    CHECK (sensitivity IN ('internal','sales','public')),
   approved_for_content boolean     DEFAULT false,
