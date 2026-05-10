@@ -1,1 +1,144 @@
-
+{
+  "name": "Daily Ops Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 24, "triggerAtHour": 9 }] }
+      },
+      "id": "schedule",
+      "name": "Schedule — 9 AM Daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://angel-precision-bot-official-1.onrender.com/health",
+        "options": { "timeout": 15000 }
+      },
+      "id": "fetch-bot-health",
+      "name": "Fetch Bot Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/trade_queue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "select",   "value": "status,count" },
+            { "name": "status",   "value": "eq.REJECTED" },
+            { "name": "created_ts", "value": "gte." + new Date(Date.now() - 86400000).toISOString() }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-queue",
+      "name": "Fetch Rejected Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const health = $('Fetch Bot Health').first().json;\nconst queue  = $('Fetch Rejected Queue').first().json;\n\nconst events = [];\n\nif (!health.ok) {\n  events.push({\n    severity: 'CRITICAL',\n    source: 'daily_ops_agent',\n    event_type: 'bot_health_check_failed',\n    message: 'Bot health endpoint returned not-ok at daily check',\n    payload: health\n  });\n}\n\nconst rejectedCount = Array.isArray(queue) ? queue.length : 0;\nif (rejectedCount > 20) {\n  events.push({\n    severity: 'WARNING',\n    source: 'daily_ops_agent',\n    event_type: 'high_rejection_count',\n    message: rejectedCount + ' signals rejected in last 24h — check filters',\n    payload: { rejected_count: rejectedCount }\n  });\n}\n\nif (events.length === 0) {\n  events.push({\n    severity: 'INFO',\n    source: 'daily_ops_agent',\n    event_type: 'daily_check_clean',\n    message: 'Daily ops check passed. Bot healthy. Rejections within normal range.',\n    payload: { rejected_24h: rejectedCount }\n  });\n}\n\nreturn events.map(e => ({ json: e }));"
+      },
+      "id": "evaluate",
+      "name": "Evaluate Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/system_health_events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: $json.severity, source: $json.source, event_type: $json.event_type, message: $json.message, payload: $json.payload, occurred_at: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "id": "log-event",
+      "name": "Log Health Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.severity }}",
+              "rightValue": "INFO",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "if-alert",
+      "name": "Alert Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/incidents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $json.event_type, severity: $json.severity, status: 'open', source: 'daily_ops_agent', incident_type: 'automated_detection', summary: $json.message, opened_at: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "id": "create-incident",
+      "name": "Create Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 200]
+    }
+  ],
+  "connections": {
+    "Schedule — 9 AM Daily": { "main": [[{ "node": "Fetch Bot Health", "type": "main", "index": 0 }, { "node": "Fetch Rejected Queue", "type": "main", "index": 0 }]] },
+    "Fetch Bot Health":      { "main": [[{ "node": "Evaluate Health", "type": "main", "index": 0 }]] },
+    "Fetch Rejected Queue":  { "main": [[{ "node": "Evaluate Health", "type": "main", "index": 0 }]] },
+    "Evaluate Health":       { "main": [[{ "node": "Log Health Event", "type": "main", "index": 0 }]] },
+    "Log Health Event":      { "main": [[{ "node": "Alert Needed?", "type": "main", "index": 0 }]] },
+    "Alert Needed?": {
+      "main": [
+        [{ "node": "Create Incident", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "angel-precision" }]
+}

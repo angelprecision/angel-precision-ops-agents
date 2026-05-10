@@ -1,1 +1,85 @@
-
+{
+  "name": "Follow-Up Agent — Re-engage Cold Leads",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 24, "triggerAtHour": 10 }] }
+      },
+      "id": "schedule",
+      "name": "Schedule — 10 AM Daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "select",             "value": "id,email,name,temperature,last_engagement_score,last_engagement_at,next_action" },
+            { "name": "status",             "value": "neq.dead" },
+            { "name": "last_engagement_at", "value": "lt." + new Date(Date.now() - 3 * 86400000).toISOString() },
+            { "name": "order",              "value": "last_engagement_score.desc" },
+            { "name": "limit",             "value": "20" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-stale-leads",
+      "name": "Fetch Stale Leads (3+ days)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const leads = Array.isArray($input.all()) ? $input.all().map(i => i.json) : [];\nif (leads.length === 0) return [{ json: { count: 0, leads: [] } }];\n\nreturn leads.map(lead => ({\n  json: {\n    id: lead.id,\n    email: lead.email,\n    name: lead.name || 'there',\n    temperature: lead.temperature,\n    score: lead.last_engagement_score,\n    next_action: lead.next_action || 'Send follow-up',\n    days_silent: Math.floor((Date.now() - new Date(lead.last_engagement_at).getTime()) / 86400000)\n  }\n}));"
+      },
+      "id": "prep-followups",
+      "name": "Prep Follow-ups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/leads?id=eq.{{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "={{ JSON.stringify({ next_action: 'Follow-up sent ' + new Date().toISOString().slice(0,10), last_engagement_at: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "id": "update-lead",
+      "name": "Update Lead — Mark Followed Up",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Schedule — 10 AM Daily":    { "main": [[{ "node": "Fetch Stale Leads (3+ days)", "type": "main", "index": 0 }]] },
+    "Fetch Stale Leads (3+ days)":{ "main": [[{ "node": "Prep Follow-ups", "type": "main", "index": 0 }]] },
+    "Prep Follow-ups":           { "main": [[{ "node": "Update Lead — Mark Followed Up", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "angel-precision" }]
+}

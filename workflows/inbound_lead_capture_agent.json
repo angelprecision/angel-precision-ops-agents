@@ -1,1 +1,126 @@
-
+{
+  "name": "Inbound Lead Capture",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inbound-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook — New Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst email = (body.email || '').toLowerCase().trim();\nif (!email) throw new Error('email is required');\n\nconst score = (() => {\n  let s = 50;\n  if (body.has_capital) s += 20;\n  if (body.timeframe === 'immediate') s += 15;\n  if (body.timeframe === '1_month') s += 10;\n  if (body.source === 'referral') s += 10;\n  if (body.source === 'organic') s += 5;\n  return Math.min(s, 100);\n})();\n\nconst temp = score >= 80 ? 'hot' : score >= 60 ? 'warm' : 'cold';\n\nreturn [{\n  json: {\n    email,\n    name:                   body.name || null,\n    source:                 body.source || 'webhook',\n    status:                 'new',\n    temperature:            temp,\n    estimated_seriousness:  body.seriousness || 'unknown',\n    time_to_close_estimate: body.timeframe   || 'unknown',\n    last_engagement_score:  score,\n    last_engagement_at:     new Date().toISOString(),\n    next_action:            temp === 'hot' ? 'Book fit call immediately' : 'Send intro sequence',\n    notes:                  body.notes || null\n  }\n}];"
+      },
+      "id": "score-lead",
+      "name": "Score Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "resolution=merge-duplicates,return=representation" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "on_conflict", "value": "email" }
+          ]
+        },
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "upsert-lead",
+      "name": "Upsert Lead → Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Score Lead').first().json.temperature }}",
+              "rightValue": "hot",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "if-hot",
+      "name": "Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/system_health_events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'WARNING', source: 'lead_capture', event_type: 'hot_lead_inbound', message: 'HOT lead: ' + $('Score Lead').first().json.email + ' — score ' + $('Score Lead').first().json.last_engagement_score, payload: $('Score Lead').first().json }) }}",
+        "options": {}
+      },
+      "id": "log-hot-alert",
+      "name": "Log Hot Lead Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, email: $('Score Lead').first().json.email, temperature: $('Score Lead').first().json.temperature, score: $('Score Lead').first().json.last_engagement_score }) }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "Webhook — New Lead": { "main": [[{ "node": "Score Lead", "type": "main", "index": 0 }]] },
+    "Score Lead":         { "main": [[{ "node": "Upsert Lead → Supabase", "type": "main", "index": 0 }]] },
+    "Upsert Lead → Supabase": { "main": [[{ "node": "Hot Lead?", "type": "main", "index": 0 }]] },
+    "Hot Lead?": {
+      "main": [
+        [{ "node": "Log Hot Lead Alert", "type": "main", "index": 0 }],
+        [{ "node": "Respond", "type": "main", "index": 0 }]
+      ]
+    },
+    "Log Hot Lead Alert": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [{ "name": "angel-precision" }]
+}
