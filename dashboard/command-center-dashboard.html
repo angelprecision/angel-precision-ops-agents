@@ -1,1 +1,242 @@
 
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Angel Precision Command Center</title>
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+<style>
+:root, [data-theme="light"] {
+  --bg: #f7f6f2; --surface: #f9f8f5; --surface-2: #fbfbf9; --surface-offset: #f3f0ec;
+  --border: #d4d1ca; --divider: #dcd9d5; --text: #28251d; --text-muted: #7a7974; --text-faint: #bab9b4;
+  --primary: #01696f; --primary-hover: #0c4e54; --warning: #964219; --error: #a12c7b;
+  --success: #437a22; --blue: #006494; --gold: #d19900;
+  --shadow: 0 1px 3px rgba(40,37,29,0.06); --shadow-md: 0 4px 12px rgba(40,37,29,0.08);
+}
+[data-theme="dark"] {
+  --bg: #171614; --surface: #1c1b19; --surface-2: #201f1d; --surface-offset: #1d1c1a;
+  --border: #393836; --divider: #262523; --text: #cdccca; --text-muted: #797876; --text-faint: #5a5957;
+  --primary: #4f98a3; --primary-hover: #227f8b; --warning: #bb653b; --error: #d163a7;
+  --success: #6daa45; --blue: #5591c7; --gold: #e8af34;
+  --shadow: 0 1px 3px rgba(0,0,0,0.2); --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Satoshi', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+.shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+@media (max-width: 768px) { .shell { grid-template-columns: 1fr; } .sidebar { display: none; } }
+.sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 1.5rem 1rem; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.sidebar h1 { font-size: 0.875rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--primary); margin-bottom: 1.5rem; }
+.nav-item { display: block; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.875rem; color: var(--text-muted); cursor: pointer; transition: all 150ms; margin-bottom: 2px; }
+.nav-item:hover, .nav-item.active { background: var(--surface-offset); color: var(--text); }
+.nav-item.active { font-weight: 600; color: var(--primary); }
+.main { padding: 2rem; overflow-y: auto; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+.header h2 { font-size: 1.25rem; font-weight: 700; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; }
+.badge-live { background: var(--success); color: #fff; }
+.badge-draft { background: var(--gold); color: #000; }
+.grid { display: grid; gap: 1rem; margin-bottom: 2rem; }
+.grid-4 { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.grid-2 { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; box-shadow: var(--shadow); }
+.card-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 0.5rem; }
+.card-value { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card-subtitle { font-size: 0.75rem; color: var(--text-faint); margin-top: 0.25rem; }
+.section-title { font-size: 0.875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 1rem; margin-top: 1.5rem; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--divider); color: var(--text-muted); font-weight: 500; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
+td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--divider); }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.dot-green { background: var(--success); }
+.dot-yellow { background: var(--gold); }
+.dot-red { background: var(--error); }
+.dot-blue { background: var(--blue); }
+.cadence-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.cadence-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; }
+.cadence-check { width: 18px; height: 18px; border-radius: 4px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; cursor: pointer; }
+.cadence-check.done { background: var(--success); border-color: var(--success); color: #fff; }
+.tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--divider); margin-bottom: 1.5rem; overflow-x: auto; }
+.tab { padding: 0.5rem 1rem; font-size: 0.8125rem; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <h1>Angel Precision</h1>
+    <div class="nav-item active" data-tab="overview">Overview</div>
+    <div class="nav-item" data-tab="sales">Sales</div>
+    <div class="nav-item" data-tab="content">Content</div>
+    <div class="nav-item" data-tab="botops">Bot Ops</div>
+    <div class="nav-item" data-tab="clients">Clients</div>
+    <div class="nav-item" data-tab="vault">Proof Vault</div>
+    <div class="nav-item" data-tab="incidents">Incidents</div>
+    <div class="nav-item" data-tab="cadence">Daily Cadence</div>
+    <div class="nav-item" data-tab="escalations">Escalations</div>
+  </aside>
+  <main class="main">
+
+    <!-- OVERVIEW -->
+    <section id="tab-overview">
+      <div class="header"><h2>Command Center</h2><span class="badge badge-live">LIVE</span></div>
+      <div class="grid grid-4">
+        <div class="card"><div class="card-title">New Leads Today</div><div class="card-value" id="v-new-leads">0</div></div>
+        <div class="card"><div class="card-title">Hot Leads</div><div class="card-value" id="v-hot">0</div></div>
+        <div class="card"><div class="card-title">Follow-ups Due</div><div class="card-value" id="v-followups">0</div></div>
+        <div class="card"><div class="card-title">Booked Calls</div><div class="card-value" id="v-calls">0</div></div>
+        <div class="card"><div class="card-title">Content Queued</div><div class="card-value" id="v-queued">0</div></div>
+        <div class="card"><div class="card-title">Posted Today</div><div class="card-value" id="v-posted">0</div></div>
+        <div class="card"><div class="card-title">Open Incidents</div><div class="card-value" id="v-incidents">0</div></div>
+        <div class="card"><div class="card-title">Proof Artifacts</div><div class="card-value" id="v-proof">0</div></div>
+      </div>
+      <div class="section-title">Daily Cadence</div>
+      <div class="cadence-row" id="cadence-overview"></div>
+      <div class="section-title" style="margin-top:2rem">System Health</div>
+      <div class="grid grid-3">
+        <div class="card"><span class="status-dot dot-green"></span>Scanner<div class="card-subtitle">Running normally</div></div>
+        <div class="card"><span class="status-dot dot-green"></span>Queue<div class="card-subtitle">Processing</div></div>
+        <div class="card"><span class="status-dot dot-green"></span>Broker API<div class="card-subtitle">Connected</div></div>
+      </div>
+    </section>
+
+    <!-- SALES -->
+    <section id="tab-sales" class="hidden">
+      <div class="header"><h2>Sales Pipeline</h2></div>
+      <div class="grid grid-4">
+        <div class="card"><div class="card-title">Hot</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Warm</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Cold</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Avg Score</div><div class="card-value">—</div></div>
+      </div>
+      <div class="section-title">Recent Leads</div>
+      <div class="table-wrap"><table><thead><tr><th>Name</th><th>Status</th><th>Score</th><th>Seriousness</th><th>Time to Close</th><th>Next Action</th></tr></thead><tbody><tr><td colspan="6" style="color:var(--text-faint)">Connect Supabase to populate</td></tr></tbody></table></div>
+    </section>
+
+    <!-- CONTENT -->
+    <section id="tab-content" class="hidden">
+      <div class="header"><h2>Content Queue</h2></div>
+      <div class="grid grid-3">
+        <div class="card"><div class="card-title">X</div><div class="card-subtitle">Last: —</div></div>
+        <div class="card"><div class="card-title">LinkedIn</div><div class="card-subtitle">Last: —</div></div>
+        <div class="card"><div class="card-title">Facebook</div><div class="card-subtitle">Last: —</div></div>
+        <div class="card"><div class="card-title">Reddit</div><div class="card-subtitle">Last: —</div></div>
+        <div class="card"><div class="card-title">Medium</div><div class="card-subtitle">Last: —</div></div>
+        <div class="card"><div class="card-title">Substack</div><div class="card-subtitle">Last: —</div></div>
+      </div>
+      <div class="section-title">Pending Approval</div>
+      <div class="table-wrap"><table><thead><tr><th>Platform</th><th>Preview</th><th>Status</th><th>Action</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--text-faint)">Run Content Agent to populate</td></tr></tbody></table></div>
+    </section>
+
+    <!-- BOT OPS -->
+    <section id="tab-botops" class="hidden">
+      <div class="header"><h2>Bot Operations</h2></div>
+      <div class="grid grid-4">
+        <div class="card"><span class="status-dot dot-green"></span><div class="card-title">Scanner</div><div class="card-value">OK</div></div>
+        <div class="card"><span class="status-dot dot-green"></span><div class="card-title">Queue</div><div class="card-value">OK</div></div>
+        <div class="card"><span class="status-dot dot-green"></span><div class="card-title">Broker</div><div class="card-value">OK</div></div>
+        <div class="card"><span class="status-dot dot-yellow"></span><div class="card-title">Warnings</div><div class="card-value">0</div></div>
+      </div>
+      <div class="section-title">Recent Events</div>
+      <div class="table-wrap"><table><thead><tr><th>Time</th><th>Severity</th><th>Source</th><th>Message</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--text-faint)">Events from system_health_events</td></tr></tbody></table></div>
+    </section>
+
+    <!-- CLIENTS -->
+    <section id="tab-clients" class="hidden">
+      <div class="header"><h2>Clients</h2></div>
+      <div class="grid grid-4">
+        <div class="card"><div class="card-title">Active</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Onboarding</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Paused</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Kill Switches On</div><div class="card-value">0</div></div>
+      </div>
+    </section>
+
+    <!-- PROOF VAULT -->
+    <section id="tab-vault" class="hidden">
+      <div class="header"><h2>Proof Vault</h2></div>
+      <div class="grid grid-4">
+        <div class="card"><div class="card-title">Total Artifacts</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Content Approved</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Sales Approved</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Saved Today</div><div class="card-value">0</div></div>
+      </div>
+      <div class="section-title">Recent Artifacts</div>
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Title</th><th>Sensitivity</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--text-faint)">Add proof artifacts to populate</td></tr></tbody></table></div>
+    </section>
+
+    <!-- INCIDENTS -->
+    <section id="tab-incidents" class="hidden">
+      <div class="header"><h2>Incident Memory</h2></div>
+      <div class="grid grid-4">
+        <div class="card"><div class="card-title">Open</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Resolved</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Critical</div><div class="card-value">0</div></div>
+        <div class="card"><div class="card-title">Emergency</div><div class="card-value">0</div></div>
+      </div>
+      <div class="section-title">Open Incidents</div>
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Severity</th><th>Title</th><th>Status</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--text-faint)">No open incidents</td></tr></tbody></table></div>
+    </section>
+
+    <!-- DAILY CADENCE -->
+    <section id="tab-cadence" class="hidden">
+      <div class="header"><h2>Daily Cadence</h2></div>
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title">Today's Targets</div>
+          <div style="margin-top:1rem" id="cadence-full"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Week Summary</div>
+          <div style="margin-top:1rem;color:var(--text-muted);font-size:0.8125rem">Connect to daily_cadence_logs for weekly view</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ESCALATIONS -->
+    <section id="tab-escalations" class="hidden">
+      <div class="header"><h2>Escalation Routing</h2></div>
+      <div class="table-wrap"><table><thead><tr><th>Severity</th><th>Channel</th><th>Cooldown</th><th>Escalate After</th><th>Status</th></tr></thead><tbody>
+        <tr><td>INFO</td><td>Log only</td><td>—</td><td>—</td><td><span class="status-dot dot-green"></span>Active</td></tr>
+        <tr><td>WARNING</td><td>Discord</td><td>15 min</td><td>30 min</td><td><span class="status-dot dot-green"></span>Active</td></tr>
+        <tr><td>CRITICAL</td><td>Discord + Email</td><td>10 min</td><td>20 min</td><td><span class="status-dot dot-green"></span>Active</td></tr>
+        <tr><td>EMERGENCY</td><td>All channels</td><td>5 min</td><td>10 min</td><td><span class="status-dot dot-green"></span>Active</td></tr>
+      </tbody></table></div>
+      <div class="section-title">Suppressed Alerts</div>
+      <div class="table-wrap"><table><thead><tr><th>Fingerprint</th><th>Count</th><th>Last Seen</th><th>Escalated</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--text-faint)">No suppressed alerts</td></tr></tbody></table></div>
+    </section>
+
+  </main>
+</div>
+<script>
+const tabs = document.querySelectorAll('.nav-item');
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(n => n.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
+  document.getElementById('tab-' + t.dataset.tab).classList.remove('hidden');
+}));
+
+const cadenceItems = [
+  { label: 'Founder post', key: 'fp' },
+  { label: 'X posts (2)', key: 'xp' },
+  { label: 'Outreach drafts (5)', key: 'od' },
+  { label: 'Follow-ups (5)', key: 'fu' },
+  { label: 'Ops note', key: 'on' },
+  { label: 'Dashboard refinement', key: 'dr' },
+  { label: 'Proof artifact', key: 'pa' }
+];
+function renderCadence(container) {
+  container.innerHTML = cadenceItems.map(i =>
+    `<div class="cadence-item"><div class="cadence-check" data-key="${i.key}" onclick="this.classList.toggle('done');this.textContent=this.classList.contains('done')?'✓':''">` +
+    `</div>${i.label}</div>`
+  ).join('');
+}
+renderCadence(document.getElementById('cadence-overview'));
+renderCadence(document.getElementById('cadence-full'));
+</script>
+</body>
+</html>
