@@ -1,0 +1,55 @@
+# Lead Generation Plan
+
+## Objective
+You said there are no leads yet, so build a lead engine alongside the inbox agent.
+
+## Safe first lead channels
+1. Founder-led outbound email to warmish operators/business owners you can identify manually
+2. LinkedIn prospecting list builder (manual first, then semi-automated enrichment)
+3. Founder content funnel from LinkedIn/X/Substack/Medium/Facebook
+4. Simple landing form that routes inbound interest to Gmail + Supabase
+5. Referral asks from existing personal/business contacts
+
+## First lead gen agent to build
+### Prospect Research Agent
+Purpose:
+- take a company/person URL or name
+- research source/company/context
+- create a lead record
+- generate a one-paragraph personalization brief
+- suggest outreach angle
+- never auto-send at first
+
+Inputs:
+- name
+- title
+- company
+- website/linkedin
+- location
+
+Outputs:
+- ICP fit score
+- personalization notes
+- outreach angle
+- draft email opening line
+- next step
+
+## ICP starting point
+Priority:
+- business owners with liquid capital
+- operators/founders already interested in systematic trading
+- higher-income professionals with account sizes >= target band
+- referrals and 2nd-degree connections
+
+## Lead sources to stand up today
+- one Supabase landing page form: name, email, account size band, goals, risk tolerance, source
+- one Google Calendar booking CTA in all posts
+- one founder bio link that points to waitlist + booking link
+- manual list of 25 prospects from personal network + local contacts + social interactions
+
+## Daily target
+- 10 researched prospects added
+- 5 custom outreach drafts
+- 1 founder post on LinkedIn
+- 2 X posts
+- 1 Substack or Medium article every 3-4 days
