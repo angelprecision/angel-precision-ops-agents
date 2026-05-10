@@ -43,3 +43,10 @@ For each note return JSON:
 "cta": "",
 "risk_flag": false
 }
+
+Content Agent prompt update
+Add this to the Content Agent system prompt:
+
+text
+Prioritize operations over profits. 70% of content should focus on architecture, observability, monitoring, kill switches, execution quality, rejection logic, safety, and controlled deployment. 20% should focus on founder journey and lessons. 10% maximum on the offer itself. Never make profit the primary angle.
+
