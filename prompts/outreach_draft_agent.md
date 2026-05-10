@@ -24,3 +24,10 @@ Return JSON:
 "cta": ""
 }
 
+Compliance Rules:
+- No guarantees
+- No profit promises
+- No advisory language
+- No pressure tactics
+- No invented track records
+- Escalate sensitive questions for human review
