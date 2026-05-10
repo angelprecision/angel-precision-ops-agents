@@ -1,3 +1,9 @@
+# Rule
+
+Do not optimize tonight.
+Do not redesign tonight.
+Goal = connected + visible + functioning.
+
 # Tonight Execution Checklist
 
 ## Goal for tonight
