@@ -1,0 +1,3 @@
+- 3 short notes per week
+- 1 deeper article per week
+- reuse approved ideas across Medium/LinkedIn/Facebook
