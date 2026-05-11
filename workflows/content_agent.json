@@ -1,9 +1,9 @@
 {
-  "name": "Content Agent — Operator Letter to Queue",
+  "name": "AP Content Agent",
   "nodes": [
     {
       "parameters": {},
-      "id": "manual-trigger",
+      "id": "a1b2c3d4-0002-0002-0002-000000000001",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -13,23 +13,33 @@
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "letter", "name": "letter_text", "value": "Paste operator letter text here", "type": "string" },
-            { "id": "source", "name": "source_letter", "value": "Week 1 — What Controlled Deployment Actually Means", "type": "string" }
+            {
+              "id": "field1",
+              "name": "letter_text",
+              "value": "PASTE YOUR OPERATOR LETTER HERE",
+              "type": "string"
+            },
+            {
+              "id": "field2",
+              "name": "source_letter",
+              "value": "Week 1 — What Controlled Deployment Actually Means",
+              "type": "string"
+            }
           ]
         }
       },
-      "id": "set-letter",
-      "name": "Set Letter Input",
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Set Letter",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [460, 300]
     },
     {
       "parameters": {
-        "jsCode": "const letter = $json.letter_text;\nconst source = $json.source_letter;\n\nconst platforms = [\n  {\n    platform: 'x',\n    content_type: 'thread',\n    preview_text: 'Thread: ' + letter.slice(0, 120) + '...',\n    full_content: '1/ ' + letter.slice(0, 280) + '\\n\\n2/ Key insight: operational discipline is the edge.\\n\\n3/ One number: most scanned setups rejected. That is the feature.\\n\\n4/ What\\'s next: escalation routing live this week.\\n\\n5/ Angel Precision is in controlled beta. Apply for access. 🧵',\n    source_letter: source\n  },\n  {\n    platform: 'linkedin',\n    content_type: 'post',\n    preview_text: letter.slice(0, 150) + '...',\n    full_content: 'A quick operator note for anyone following what we\\'re building at Angel Precision.\\n\\n' + letter.slice(0, 600) + '\\n\\nFull weekly letter: [link]\\n\\n#AlgoTrading #OperatorMindset #SystemsThinking',\n    source_letter: source\n  },\n  {\n    platform: 'substack',\n    content_type: 'article',\n    preview_text: source,\n    full_content: letter,\n    source_letter: source\n  }\n];\n\nreturn platforms.map(p => ({ json: p }));"
+        "jsCode": "const letter = $json.letter_text;\nconst source = $json.source_letter;\n\nreturn [\n  { json: { platform: 'substack', content_type: 'article', preview_text: source, full_content: letter, status: 'pending_approval', source_letter: source } },\n  { json: { platform: 'linkedin', content_type: 'post', preview_text: letter.slice(0, 150), full_content: 'A quick operator note from Angel Precision.\\n\\n' + letter.slice(0, 500) + '\\n\\n#AlgoTrading #OperatorMindset', status: 'pending_approval', source_letter: source } },\n  { json: { platform: 'x', content_type: 'thread', preview_text: letter.slice(0, 120), full_content: '1/ ' + letter.slice(0, 250) + '\\n\\n2/ One number worth noting: most scanned setups rejected. That is the feature.\\n\\n3/ Apply for beta access at angelprecision.com', status: 'pending_approval', source_letter: source } }\n];"
       },
-      "id": "generate-drafts",
-      "name": "Generate Platform Drafts",
+      "id": "a1b2c3d4-0002-0002-0002-000000000003",
+      "name": "Generate Drafts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [680, 300]
@@ -41,29 +51,35 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
             { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Content-Type",  "value": "application/json" },
-            { "name": "Prefer",        "value": "return=representation" }
+            { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "bodyType": "json",
-        "jsonBody": "={{ JSON.stringify({ platform: $json.platform, content_type: $json.content_type, preview_text: $json.preview_text, full_content: $json.full_content, status: 'pending_approval', source_letter: $json.source_letter, created_at: new Date().toISOString() }) }}",
+        "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {}
       },
-      "id": "insert-queue",
-      "name": "Insert → content_queue",
+      "id": "a1b2c3d4-0002-0002-0002-000000000004",
+      "name": "Insert to content_queue",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [900, 300]
     }
   ],
   "connections": {
-    "Manual Trigger":        { "main": [[{ "node": "Set Letter Input", "type": "main", "index": 0 }]] },
-    "Set Letter Input":      { "main": [[{ "node": "Generate Platform Drafts", "type": "main", "index": 0 }]] },
-    "Generate Platform Drafts": { "main": [[{ "node": "Insert → content_queue", "type": "main", "index": 0 }]] }
+    "Manual Trigger": {
+      "main": [[{ "node": "Set Letter", "type": "main", "index": 0 }]]
+    },
+    "Set Letter": {
+      "main": [[{ "node": "Generate Drafts", "type": "main", "index": 0 }]]
+    },
+    "Generate Drafts": {
+      "main": [[{ "node": "Insert to content_queue", "type": "main", "index": 0 }]]
+    }
   },
   "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "angel-precision" }]
+  "staticData": null,
+  "pinData": {}
 }
