@@ -1,1 +1,118 @@
-
+{
+  "name": "AP Prospect Research Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "research-prospect",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f1g2h3i4-0005-0005-0005-000000000001",
+      "name": "Webhook — Research Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst email = (body.email || '').toLowerCase().trim();\nconst name = body.name || '';\nif (!email) throw new Error('email required');\nreturn [{ json: { email, name, domain: email.split('@')[1] || '', requested_at: new Date().toISOString() } }];"
+      },
+      "id": "f1g2h3i4-0005-0005-0005-000000000002",
+      "name": "Parse Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/leads?email=eq.{{ $json.email }}&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f1g2h3i4-0005-0005-0005-000000000003",
+      "name": "Check Existing Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = Array.isArray($input.first().json) ? $input.first().json[0] : null;\nconst req = $('Parse Request').first().json;\n\nconst notes = [\n  existing ? 'Existing lead — score: ' + (existing.last_engagement_score || 0) : 'New prospect',\n  'Domain: ' + req.domain,\n  'Research needed: LinkedIn, company size, capital availability',\n  'Qualify on: discretionary capital $25k+, options experience, technical mindset'\n].join('\\n');\n\nreturn [{ json: {\n  email: req.email,\n  name: req.name || (existing && existing.name) || '',\n  source: 'prospect_research',\n  status: 'researching',\n  temperature: existing ? existing.temperature : 'cold',\n  last_engagement_score: existing ? existing.last_engagement_score : 30,\n  last_engagement_at: new Date().toISOString(),\n  next_action: 'Complete research — check LinkedIn and domain',\n  notes: notes\n} }];"
+      },
+      "id": "f1g2h3i4-0005-0005-0005-000000000004",
+      "name": "Build Research Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=merge-duplicates,return=representation" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "on_conflict", "value": "email" }
+          ]
+        },
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "f1g2h3i4-0005-0005-0005-000000000005",
+      "name": "Save to Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, email: $('Parse Request').first().json.email, message: 'Lead created — complete research in dashboard' }) }}"
+      },
+      "id": "f1g2h3i4-0005-0005-0005-000000000006",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1360, 300]
+    }
+  ],
+  "connections": {
+    "Webhook — Research Request": {
+      "main": [[{ "node": "Parse Request", "type": "main", "index": 0 }]]
+    },
+    "Parse Request": {
+      "main": [[{ "node": "Check Existing Lead", "type": "main", "index": 0 }]]
+    },
+    "Check Existing Lead": {
+      "main": [[{ "node": "Build Research Profile", "type": "main", "index": 0 }]]
+    },
+    "Build Research Profile": {
+      "main": [[{ "node": "Save to Leads", "type": "main", "index": 0 }]]
+    },
+    "Save to Leads": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "pinData": {}
+}

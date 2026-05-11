@@ -1,0 +1,125 @@
+{
+  "name": "AP Discord Alert Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 2 }]
+        }
+      },
+      "id": "b1c2d3e4-0001-0001-0001-000000000001",
+      "name": "Poll Every 2 Min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/system_health_events?resolved=eq.false&severity=in.(WARNING,CRITICAL,EMERGENCY)&order=occurred_at.desc&limit=10",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1c2d3e4-0001-0001-0001-000000000002",
+      "name": "Fetch Unresolved Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const events = Array.isArray($input.first().json) ? $input.first().json : [];\nif (events.length === 0) return [{ json: { skip: true } }];\n\nconst stored = $getWorkflowStaticData('global');\nif (!stored.alerted) stored.alerted = {};\n\nconst fresh = events.filter(e => !stored.alerted[e.id]);\nif (fresh.length === 0) return [{ json: { skip: true } }];\n\nfresh.forEach(e => { stored.alerted[e.id] = true; });\n\nconst emoji = { WARNING: '⚠️', CRITICAL: '🚨', EMERGENCY: '🆘' };\n\nconst lines = fresh.map(e =>\n  `${emoji[e.severity] || '⚠️'} **${e.severity}** | ${e.source} | ${e.event_type}\\n> ${e.message}`\n).join('\\n\\n');\n\nreturn [{ json: { skip: false, content: `**Angel Precision — System Alert**\\n\\n${lines}\\n\\n_${new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York' })} ET_` } }];"
+      },
+      "id": "b1c2d3e4-0001-0001-0001-000000000003",
+      "name": "Dedupe and Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "b1c2d3e4-0001-0001-0001-000000000004",
+      "name": "Has New Alerts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_OPS }}",
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "={{ JSON.stringify({ content: $json.content }) }}",
+        "options": {}
+      },
+      "id": "b1c2d3e4-0001-0001-0001-000000000005",
+      "name": "Post to Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/system_health_events?resolved=eq.false&severity=in.(WARNING,CRITICAL,EMERGENCY)",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "{\"resolved\": true}",
+        "options": {}
+      },
+      "id": "b1c2d3e4-0001-0001-0001-000000000006",
+      "name": "Mark Resolved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "Poll Every 2 Min": {
+      "main": [[{ "node": "Fetch Unresolved Events", "type": "main", "index": 0 }]]
+    },
+    "Fetch Unresolved Events": {
+      "main": [[{ "node": "Dedupe and Format", "type": "main", "index": 0 }]]
+    },
+    "Dedupe and Format": {
+      "main": [[{ "node": "Has New Alerts?", "type": "main", "index": 0 }]]
+    },
+    "Has New Alerts?": {
+      "main": [
+        [
+          { "node": "Post to Discord", "type": "main", "index": 0 },
+          { "node": "Mark Resolved", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "pinData": {}
+}

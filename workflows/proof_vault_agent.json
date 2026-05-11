@@ -1,0 +1,108 @@
+{
+  "name": "AP Proof Vault Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 30 }]
+        }
+      },
+      "id": "c1d2e3f4-0002-0002-0002-000000000001",
+      "name": "Poll Every 30 Min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/proof_trades?select=id,ticker,side,option_pnl_pct,win,closed_at,exit_reason,client_email&system_version=eq.v2&synthetic_entry=eq.false&order=closed_at.desc&limit=20",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0002-0002-0002-000000000002",
+      "name": "Fetch Recent Trades",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trades = Array.isArray($input.first().json) ? $input.first().json : [];\nif (trades.length === 0) return [{ json: { skip: true } }];\n\nconst stored = $getWorkflowStaticData('global');\nif (!stored.logged) stored.logged = {};\n\nconst fresh = trades.filter(t => !stored.logged[t.id]);\nif (fresh.length === 0) return [{ json: { skip: true } }];\n\nfresh.forEach(t => { stored.logged[t.id] = true; });\n\nreturn fresh.map(t => {\n  const pnl = t.option_pnl_pct;\n  const win = t.win || pnl > 0;\n  const pnlStr = pnl != null ? (pnl >= 0 ? '+' : '') + pnl.toFixed(1) + '%' : 'unknown';\n  return {\n    json: {\n      skip: false,\n      artifact_type: win ? 'winning_trade' : 'losing_trade',\n      title: t.ticker + ' ' + t.side + ' ' + pnlStr + ' — ' + (t.closed_at || '').slice(0, 10),\n      description: 'Exit: ' + (t.exit_reason || 'unknown') + ' | P&L: ' + pnlStr,\n      related_trade_id: t.id,\n      sensitivity: 'internal',\n      approved_for_content: win && pnl > 15,\n      approved_for_sales: win && pnl > 25\n    }\n  };\n});"
+      },
+      "id": "c1d2e3f4-0002-0002-0002-000000000003",
+      "name": "Build Artifacts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "c1d2e3f4-0002-0002-0002-000000000004",
+      "name": "New Trades?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jhawzqnhcihevkhehogm.supabase.co/rest/v1/proof_vault",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "bodyType": "json",
+        "jsonBody": "={{ JSON.stringify({ artifact_type: $json.artifact_type, title: $json.title, description: $json.description, related_trade_id: $json.related_trade_id, sensitivity: $json.sensitivity, approved_for_content: $json.approved_for_content, approved_for_sales: $json.approved_for_sales }) }}",
+        "options": {}
+      },
+      "id": "c1d2e3f4-0002-0002-0002-000000000005",
+      "name": "Save to Proof Vault",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200]
+    }
+  ],
+  "connections": {
+    "Poll Every 30 Min": {
+      "main": [[{ "node": "Fetch Recent Trades", "type": "main", "index": 0 }]]
+    },
+    "Fetch Recent Trades": {
+      "main": [[{ "node": "Build Artifacts", "type": "main", "index": 0 }]]
+    },
+    "Build Artifacts": {
+      "main": [[{ "node": "New Trades?", "type": "main", "index": 0 }]]
+    },
+    "New Trades?": {
+      "main": [
+        [{ "node": "Save to Proof Vault", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "pinData": {}
+}
