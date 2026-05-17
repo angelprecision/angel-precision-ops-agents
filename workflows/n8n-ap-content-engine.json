@@ -1,0 +1,177 @@
+{
+  "name": "AP Content Engine - Ops Notes to Content Queue",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": "PASTE_GOOGLE_SHEET_ID_HERE",
+        "sheetName": "Ops Notes",
+        "event": "rowAdded",
+        "options": {}
+      },
+      "id": "1",
+      "name": "New Ops Note Added",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json;\nconst fields = ['Bot Update','Bug Fixed','Health Issue','Client Result','Lesson','Content Angle'];\nconst opsNote = fields.map(f => row[f]).filter(Boolean).join(' | ');\nreturn [{ json: { ...row, ops_note_combined: opsNote || 'No ops note provided.' } }];"
+      },
+      "id": "2",
+      "name": "Combine Ops Note Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"temperature\": 0.7,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are the Angel Precision Content Agent. You turn founder ops notes into safe, serious marketing drafts. Never promise profits, never guarantee returns, never sound like a guru, never make legal/advisory claims. Focus on execution quality, monitoring, risk controls, dashboards, rejection logic, operational discipline, and controlled deployment. Return valid JSON only.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Turn this ops note into 1 LinkedIn post, 1 X post, 1 YouTube Short idea, and 1 Substack idea. Tone: calm, technical, founder-led, transparent, serious, no hype. Ops note: {{$json.ops_note_combined}} Return JSON exactly like: {\\\"linkedin_post\\\":\\\"\\\",\\\"x_post\\\":\\\"\\\",\\\"youtube_idea\\\":\\\"\\\",\\\"substack_idea\\\":\\\"\\\",\\\"cta\\\":\\\"\\\"}\"\n    }\n  ]\n}"
+      },
+      "id": "3",
+      "name": "Generate Content With OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.choices?.[0]?.message?.content || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw);\n} catch (e) {\n  parsed = {\n    linkedin_post: raw,\n    x_post: '',\n    youtube_idea: '',\n    substack_idea: '',\n    cta: 'Follow along for the build.'\n  };\n}\nconst source = $('Combine Ops Note Fields').first().json;\nconst today = new Date().toISOString().slice(0,10);\nreturn [\n  { json: { Date: today, Platform: 'LinkedIn', RawNote: source.ops_note_combined, FinalPost: parsed.linkedin_post || '', CTA: parsed.cta || '', Status: 'Draft', PostedLink: '' } },\n  { json: { Date: today, Platform: 'X', RawNote: source.ops_note_combined, FinalPost: parsed.x_post || '', CTA: parsed.cta || '', Status: 'Draft', PostedLink: '' } },\n  { json: { Date: today, Platform: 'YouTube', RawNote: source.ops_note_combined, FinalPost: parsed.youtube_idea || '', CTA: parsed.cta || '', Status: 'Draft', PostedLink: '' } },\n  { json: { Date: today, Platform: 'Substack', RawNote: source.ops_note_combined, FinalPost: parsed.substack_idea || '', CTA: parsed.cta || '', Status: 'Draft', PostedLink: '' } }\n];"
+      },
+      "id": "4",
+      "name": "Prepare Content Queue Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": "PASTE_GOOGLE_SHEET_ID_HERE",
+        "sheetName": "Content Queue",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{$json.Date}}",
+            "Platform": "={{$json.Platform}}",
+            "Raw Note": "={{$json.RawNote}}",
+            "Final Post": "={{$json.FinalPost}}",
+            "CTA": "={{$json.CTA}}",
+            "Status": "={{$json.Status}}",
+            "Posted Link": "={{$json.PostedLink}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "5",
+      "name": "Append Drafts To Content Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1100,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "New Ops Note Added": {
+      "main": [
+        [
+          {
+            "node": "Combine Ops Note Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Ops Note Fields": {
+      "main": [
+        [
+          {
+            "node": "Generate Content With OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Content With OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Prepare Content Queue Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Content Queue Rows": {
+      "main": [
+        [
+          {
+            "node": "Append Drafts To Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {},
+  "versionId": "ap-content-engine-v1",
+  "triggerCount": 1,
+  "tags": [
+    {
+      "name": "angel-precision"
+    }
+  ]
+}
