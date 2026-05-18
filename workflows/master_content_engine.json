@@ -1,0 +1,150 @@
+{
+  "name": "AP Master Content Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 8 * * 1-5" }
+          ]
+        }
+      },
+      "id": "trigger-premarket",
+      "name": "Trigger 8AM ET Mon-Fri",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/proof_trades?select=closed_at,ticker,side,option_pnl_pct,win,exit_reason&system_version=eq.v2&synthetic_entry=eq.false&order=closed_at.desc&limit=5",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "fetch-recent-trades",
+      "name": "Fetch Recent Trades",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [260, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/proof_trades?select=option_pnl_pct,win&system_version=eq.v2&synthetic_entry=eq.false&closed_at=gte.{{ new Date(Date.now()-7*86400000).toISOString() }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "fetch-week-stats",
+      "name": "Fetch Week Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [260, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trades = $('Fetch Recent Trades').all().map(i => i.json);\nconst week = $('Fetch Week Stats').all().map(i => i.json);\nconst wins = week.filter(t => t.win).length;\nconst wr = week.length ? Math.round(wins/week.length*100) : 0;\nconst pnls = week.filter(t => t.option_pnl_pct != null).map(t => parseFloat(t.option_pnl_pct));\nconst avg = pnls.length ? (pnls.reduce((a,b)=>a+b,0)/pnls.length).toFixed(1) : '0';\nconst tradeLines = trades.slice(0,3).map(t => `${t.ticker} ${t.side} ${t.option_pnl_pct > 0 ? '+' : ''}${parseFloat(t.option_pnl_pct||0).toFixed(1)}% (${t.exit_reason||'auto'})`).join(', ');\nconst today = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});\nreturn [{ json: {\n  today,\n  week_trades: week.length,\n  week_win_rate: wr,\n  week_avg_pnl: avg,\n  recent_trades_summary: tradeLines || 'No recent trades',\n  day_of_week: new Date().toLocaleDateString('en-US',{weekday:'long'})\n}}];"
+      },
+      "id": "build-context",
+      "name": "Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 2000, system: `You are the Angel Precision Content Agent. Turn real trading operations data into daily content for LinkedIn and X. Brand: institutional-style automated options execution. Tone: calm, technical, founder-led, transparent, never scammy. Never guarantee returns or promise passive income. Always emphasize monitored execution, risk controls, operational visibility. Return valid JSON only, no markdown.`, messages: [{ role: 'user', content: `Today is ${$json.today} (${$json.day_of_week}). Week stats: ${$json.week_trades} trades, ${$json.week_win_rate}% win rate, avg ${$json.week_avg_pnl}% per trade. Recent: ${$json.recent_trades_summary}. Generate content for today. Return JSON: { \"linkedin_morning\": \"\", \"linkedin_afternoon\": \"\", \"x_morning\": \"\", \"x_afternoon\": \"\", \"theme\": \"\", \"approval_required\": true }` }] }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "claude-content",
+      "name": "Claude — Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $json;\nconst text = resp.content[0].text;\nlet parsed;\ntry { parsed = JSON.parse(text); } catch(e) { parsed = { error: text }; }\nconst today = new Date().toISOString().slice(0,10);\nreturn [{ json: { ...parsed, generated_at: today, status: 'PENDING_APPROVAL' } }];"
+      },
+      "id": "parse-content",
+      "name": "Parse Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/content_queue",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ linkedin_morning: $json.linkedin_morning, linkedin_afternoon: $json.linkedin_afternoon, x_morning: $json.x_morning, x_afternoon: $json.x_afternoon, theme: $json.theme, generated_at: $json.generated_at, status: 'PENDING_APPROVAL', approval_required: true }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-to-queue",
+      "name": "Save to Content Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_CONTENT }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ content: `📝 **Content Ready for Approval — ${$('Build Context').first().json.today}**\\n\\n**Theme:** ${$json.theme}\\n\\n**LinkedIn Morning:**\\n${$json.linkedin_morning}\\n\\n**X Morning:**\\n${$json.x_morning}\\n\\n✅ Approve in Content Queue to auto-post.` }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discord-content-preview",
+      "name": "Discord — Content Preview",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1300, 400]
+    }
+  ],
+  "connections": {
+    "Trigger 8AM ET Mon-Fri": { "main": [[{ "node": "Fetch Recent Trades", "type": "main", "index": 0 }, { "node": "Fetch Week Stats", "type": "main", "index": 0 }]] },
+    "Fetch Recent Trades": { "main": [[{ "node": "Build Context", "type": "main", "index": 0 }]] },
+    "Fetch Week Stats": { "main": [[{ "node": "Build Context", "type": "main", "index": 0 }]] },
+    "Build Context": { "main": [[{ "node": "Claude — Generate Content", "type": "main", "index": 0 }]] },
+    "Claude — Generate Content": { "main": [[{ "node": "Parse Content", "type": "main", "index": 0 }]] },
+    "Parse Content": { "main": [[{ "node": "Save to Content Queue", "type": "main", "index": 0 }, { "node": "Discord — Content Preview", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

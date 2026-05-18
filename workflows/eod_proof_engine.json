@@ -1,0 +1,146 @@
+{
+  "name": "AP EOD Proof + Discord Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "15 21 * * 1-5" }] }
+      },
+      "id": "trigger-eod",
+      "name": "Trigger 4:15PM ET",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/proof_trades?select=ticker,side,option_pnl_pct,win,exit_reason,entry_option_price,exit_option_price,contracts&system_version=eq.v2&synthetic_entry=eq.false&closed_at=gte.{{ new Date().toISOString().slice(0,10) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "fetch-today-trades",
+      "name": "Fetch Today Trades",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/orders?select=symbol,status,last_error&created_ts=gte.{{ new Date().toISOString().slice(0,10) }}&status=in.(CANCELED,EXPIRED)",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "fetch-today-rejections",
+      "name": "Fetch Today Rejections",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [260, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trades = $('Fetch Today Trades').all().map(i => i.json);\nconst rejected = $('Fetch Today Rejections').all().map(i => i.json);\nconst wins = trades.filter(t => t.win);\nconst pnls = trades.map(t => parseFloat(t.option_pnl_pct||0));\nconst avg = pnls.length ? (pnls.reduce((a,b)=>a+b,0)/pnls.length).toFixed(1) : null;\nconst best = pnls.length ? Math.max(...pnls).toFixed(1) : null;\nconst worst = pnls.length ? Math.min(...pnls).toFixed(1) : null;\nconst watchFails = rejected.filter(r => (r.last_error||'').includes('watch_arm_failed'));\nreturn [{ json: {\n  date: new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}),\n  trades_total: trades.length,\n  wins: wins.length,\n  losses: trades.length - wins.length,\n  win_rate: trades.length ? Math.round(wins.length/trades.length*100) : 0,\n  avg_pnl: avg,\n  best_trade: best,\n  worst_trade: worst,\n  rejections: rejected.length,\n  watch_failures: watchFails.length,\n  trade_details: trades.map(t => `${t.ticker} ${t.side}: ${parseFloat(t.option_pnl_pct||0) >= 0 ? '+' : ''}${parseFloat(t.option_pnl_pct||0).toFixed(1)}% (${t.exit_reason||'auto'})`).join('\\n')\n}}];"
+      },
+      "id": "build-eod-summary",
+      "name": "Build EOD Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 1000, system: 'You are the Angel Precision Proof Agent. Summarize today\\'s trading operations data into a clear EOD report. Tone: factual, operational, no hype, no return promises. Return JSON only.', messages: [{ role: 'user', content: `Date: ${$json.date}. Trades: ${$json.trades_total} total, ${$json.wins}W/${$json.losses}L, ${$json.win_rate}% win rate, avg ${$json.avg_pnl}%. Best: +${$json.best_trade}%, Worst: ${$json.worst_trade}%. Rejections: ${$json.rejections}. Watch failures: ${$json.watch_failures}. Details: ${$json.trade_details}. Return JSON: { \"discord_summary\": \"\", \"linkedin_post\": \"\", \"x_post\": \"\", \"safe_to_share\": false, \"requires_review\": true }` }] }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "claude-proof",
+      "name": "Claude — Proof Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $json;\nconst raw = resp.content[0].text;\nlet parsed; try { parsed = JSON.parse(raw); } catch(e) { parsed = {}; }\nconst stats = $('Build EOD Summary').first().json;\nreturn [{ json: { ...parsed, ...stats } }];"
+      },
+      "id": "parse-proof",
+      "name": "Parse Proof",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_BOT }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ embeds: [{ title: `📊 Angel Precision — EOD Report ${$('Build EOD Summary').first().json.date}`, color: $json.win_rate >= 60 ? 3066993 : $json.win_rate >= 40 ? 16776960 : 15158332, fields: [{ name: 'Trades', value: `${$json.trades_total} total`, inline: true }, { name: 'Win Rate', value: `${$json.win_rate}%`, inline: true }, { name: 'Avg P&L', value: `${$json.avg_pnl}%`, inline: true }, { name: 'Best', value: `+${$json.best_trade}%`, inline: true }, { name: 'Worst', value: `${$json.worst_trade}%`, inline: true }, { name: 'Rejections', value: String($json.rejections), inline: true }], description: $json.discord_summary || 'No summary generated.' }] }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discord-eod",
+      "name": "Discord — EOD Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1300, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/content_queue",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ linkedin_morning: $json.linkedin_post, x_morning: $json.x_post, theme: 'EOD Proof Report', generated_at: new Date().toISOString().slice(0,10), status: 'PENDING_APPROVAL', approval_required: true, safe_to_share: $json.safe_to_share }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-proof-content",
+      "name": "Save Proof Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1300, 460]
+    }
+  ],
+  "connections": {
+    "Trigger 4:15PM ET": { "main": [[{ "node": "Fetch Today Trades", "type": "main", "index": 0 }, { "node": "Fetch Today Rejections", "type": "main", "index": 0 }]] },
+    "Fetch Today Trades": { "main": [[{ "node": "Build EOD Summary", "type": "main", "index": 0 }]] },
+    "Fetch Today Rejections": { "main": [[{ "node": "Build EOD Summary", "type": "main", "index": 0 }]] },
+    "Build EOD Summary": { "main": [[{ "node": "Claude — Proof Report", "type": "main", "index": 0 }]] },
+    "Claude — Proof Report": { "main": [[{ "node": "Parse Proof", "type": "main", "index": 0 }]] },
+    "Parse Proof": { "main": [[{ "node": "Discord — EOD Report", "type": "main", "index": 0 }, { "node": "Save Proof Content", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

@@ -1,0 +1,80 @@
+{
+  "name": "AP Pre-Market Brief",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "30 13 * * 1-5" }] }
+      },
+      "id": "trigger-premarket",
+      "name": "Trigger 8:30AM ET",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.AP_BOT_URL }}/health",
+        "options": { "timeout": 10000 }
+      },
+      "id": "check-bot-health",
+      "name": "Check Bot Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [260, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/orders?select=symbol,status,last_error&status=eq.PENDING_TRIGGER&created_ts=gte.{{ new Date(Date.now()-12*3600000).toISOString() }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "check-overnight",
+      "name": "Check Overnight Signals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [260, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const health = $('Check Bot Health').first().json;\nconst overnight = $('Check Overnight Signals').all().map(i => i.json);\nconst botOk = health.status === 'healthy' || health.ok;\nconst pendingCount = overnight.length;\nconst tickers = overnight.map(o => o.symbol).join(', ') || 'none';\nconst now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric' });\nreturn [{ json: { now, bot_healthy: botOk, pending_triggers: pendingCount, watching_tickers: tickers, status_emoji: botOk ? '🟢' : '🔴' } }];"
+      },
+      "id": "build-brief",
+      "name": "Build Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_BOT }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ embeds: [{ title: `${$json.status_emoji} Angel Precision — Pre-Market Brief ${$json.now}`, color: $json.bot_healthy ? 3066993 : 15158332, fields: [{ name: 'Bot Status', value: $json.bot_healthy ? '✅ Online' : '❌ Offline', inline: true }, { name: 'Overnight Signals', value: `${$json.pending_triggers} watching`, inline: true }, { name: 'Watching', value: $json.watching_tickers || 'none', inline: false }], description: $json.pending_triggers > 0 ? `Monitoring ${$json.pending_triggers} overnight signal(s) for breach at open.` : 'No overnight signals. Bot armed for intraday setups.' }] }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discord-brief",
+      "name": "Discord — Pre-Market Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 300]
+    }
+  ],
+  "connections": {
+    "Trigger 8:30AM ET": { "main": [[{ "node": "Check Bot Health", "type": "main", "index": 0 }, { "node": "Check Overnight Signals", "type": "main", "index": 0 }]] },
+    "Check Bot Health": { "main": [[{ "node": "Build Brief", "type": "main", "index": 0 }]] },
+    "Check Overnight Signals": { "main": [[{ "node": "Build Brief", "type": "main", "index": 0 }]] },
+    "Build Brief": { "main": [[{ "node": "Discord — Pre-Market Brief", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

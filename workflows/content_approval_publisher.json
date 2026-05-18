@@ -1,0 +1,162 @@
+{
+  "name": "AP Content Approval + Auto-Publish",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approve-content",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-approve",
+      "name": "Webhook — Approve Content",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "ap-approve-content"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst contentId = body.content_id;\nconst platform = body.platform;\nconst text = body.text;\nif (!contentId || !platform || !text) throw new Error('Missing content_id, platform, or text');\nreturn [{ json: { content_id: contentId, platform, text, approved_at: new Date().toISOString() } }];"
+      },
+      "id": "validate-approval",
+      "name": "Validate Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "id": "check-platform", "leftValue": "={{ $json.platform }}", "rightValue": "linkedin", "operator": { "type": "string", "operation": "equals" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-platform",
+      "name": "Route by Platform",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/v2/ugcPosts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer {{ $env.LINKEDIN_ACCESS_TOKEN }}" },
+            { "name": "X-Restli-Protocol-Version", "value": "2.0.0" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ author: `urn:li:person:${$env.LINKEDIN_PERSON_ID}`, lifecycleState: 'PUBLISHED', specificContent: { 'com.linkedin.ugc.ShareContent': { shareCommentary: { text: $json.text }, shareMediaCategory: 'NONE' } }, visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' } }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "post-linkedin",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/tweets",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer {{ $env.TWITTER_BEARER_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "=", "value": "={{ JSON.stringify({ text: $json.text.slice(0, 280) }) }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "post-x",
+      "name": "Post to X",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 400]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/content_queue?id=eq.{{ $('Validate Approval').first().json.content_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "=", "value": "={{ JSON.stringify({ status: 'PUBLISHED', published_at: new Date().toISOString() }) }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "mark-published",
+      "name": "Mark Published in DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_CONTENT }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "=", "value": "={{ JSON.stringify({ content: `✅ Published to ${$('Validate Approval').first().json.platform}: ${$('Validate Approval').first().json.text.slice(0,100)}...` }) }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discord-published",
+      "name": "Discord — Published",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1040, 460]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true, \"published\": true }"
+      },
+      "id": "respond",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1300, 300]
+    }
+  ],
+  "connections": {
+    "Webhook — Approve Content": { "main": [[{ "node": "Validate Approval", "type": "main", "index": 0 }]] },
+    "Validate Approval": { "main": [[{ "node": "Route by Platform", "type": "main", "index": 0 }]] },
+    "Route by Platform": {
+      "main": [
+        [{ "node": "Post to LinkedIn", "type": "main", "index": 0 }],
+        [{ "node": "Post to X", "type": "main", "index": 0 }]
+      ]
+    },
+    "Post to LinkedIn": { "main": [[{ "node": "Mark Published in DB", "type": "main", "index": 0 }]] },
+    "Post to X": { "main": [[{ "node": "Mark Published in DB", "type": "main", "index": 0 }]] },
+    "Mark Published in DB": { "main": [[{ "node": "Discord — Published", "type": "main", "index": 0 }, { "node": "Respond OK", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}
